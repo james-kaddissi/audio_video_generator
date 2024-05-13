@@ -32,4 +32,11 @@ def chunk_audio(filename):
             final_text += text
     return final_text
 
-print(chunk_audio("audio.wav"))
+def transcribe_microphone(duration):
+    with sr.Microphone() as source:
+        print("Recording...")
+        audio_data = r.record(source, duration=duration)
+        print("Transcribing...")
+        text = r.recognize_google(audio_data)
+        print(text)
+transcribe_microphone(10)
