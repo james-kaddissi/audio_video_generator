@@ -1,0 +1,3 @@
+# Audio -> Video Generator
+
+This program takes an inputted audio file, and plays it over a video of the audios waveform with generated subtitles/ This application would mainly serve for content creation, for example those clips they show on the news of police calls with the waveform and some random background image. Additionally the application will take in an optional background.png image to put behind the waveform. 
