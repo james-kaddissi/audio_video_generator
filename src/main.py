@@ -15,6 +15,10 @@ from config import API_KEY
 aai.settings.api_key = API_KEY
 r = sr.Recognizer()
 
+from flask import Flask, request, jsonify, send_file
+app = Flask(__name__)
+
+
 def generate_waveform_video(audio_path, output_video_path, rate=60, bars=50, width=800, height=600, white_background=False):
     command = [
         'seewav',
@@ -22,6 +26,7 @@ def generate_waveform_video(audio_path, output_video_path, rate=60, bars=50, wid
         '--bars', str(bars),
         '--width', str(width),
         '--height', str(height),
+        '--color', '1,1,1',
         audio_path,
         output_video_path
     ]
@@ -41,29 +46,31 @@ def generate_waveform_video(audio_path, output_video_path, rate=60, bars=50, wid
 def create_subtitled_video(input_video, subtitle_file, output_video):
     video = VideoFileClip(input_video)
 
-    with open(subtitle_file, "r") as f:
-        subtitles = f.read().split("\n\n")
+    if subtitle_file and os.path.exists(subtitle_file):
+        with open(subtitle_file, "r") as f:
+            subtitles = f.read().split("\n\n")
+        subtitle_clips = []
+        for subtitle in subtitles:
+            if not subtitle.strip():
+                continue
+            parts = subtitle.split("\n")
+            if len(parts) >= 3:
+                times = parts[1].split(" --> ")
+                start_time = parse_srt_time(times[0])
+                end_time = parse_srt_time(times[1])
+                text = "\n".join(parts[2:])
+                subtitle_clip = (TextClip(text, fontsize=24, color='black', bg_color='white')
+                                 .set_position(('center', 'bottom'))
+                                 .set_duration(end_time - start_time)
+                                 .set_start(start_time))
+                subtitle_clips.append(subtitle_clip)
+        
+        final_video = CompositeVideoClip([video, *subtitle_clips])
+    else:
+        final_video = video
 
-    subtitle_clips = []
-    for subtitle in subtitles:
-        if not subtitle.strip():
-            continue
-
-        parts = subtitle.split("\n")
-        if len(parts) >= 3:
-            times = parts[1].split(" --> ")
-            start_time = parse_srt_time(times[0])
-            end_time = parse_srt_time(times[1])
-            text = "\n".join(parts[2:])
-
-            subtitle_clip = (TextClip(text, fontsize=24, color='white', bg_color='black')
-                             .set_position(('center', 'bottom'))
-                             .set_duration(end_time - start_time)
-                             .set_start(start_time))
-            subtitle_clips.append(subtitle_clip)
-
-    final_video = CompositeVideoClip([video, *subtitle_clips])
     final_video.write_videofile(output_video, codec="libx264")
+
 
 def parse_srt_time(srt_time):
     h, m, s = srt_time.split(":")
@@ -73,21 +80,48 @@ def parse_srt_time(srt_time):
 def step(input_video):
     transcriber = aai.Transcriber()
     transcript = transcriber.transcribe(input_video)
+
+    if not transcript or not transcript.text.strip():
+        print("No transcribable audio found; skipping subtitle generation.")
+        return 
+
     subtitles = transcript.export_subtitles_srt()
     with open("subtitles.srt", "w") as f:
         f.write(subtitles)
 
 def main_process(audio):
     audio_file = audio
-    output_video = "output_video.mp4"
-    generate_waveform_video(audio_file, output_video, rate=60, bars=1000, width=800, height=600, white_background=True)
+    output_video = os.path.join(os.path.dirname(__file__), "output_video.mp4")
+    final_output_video = os.path.join(os.path.dirname(__file__), "final_output_video.mp4")
+
+    print(f"Generating waveform video at: {output_video}")
+    generate_waveform_video(audio_file, output_video, rate=60, bars=100, width=800, height=600, white_background=False)
+
+    if not os.path.exists(output_video):
+        print("Output video was not created.")
+        return
+
     time.sleep(5)
     input_video = output_video
+    
     step(input_video)
-    create_subtitled_video(input_video, "subtitles.srt", "final_output_video.mp4")
+    
+    subtitle_file = "subtitles.srt"
+    if os.path.exists(subtitle_file):
+        print("Subtitles file exists. Creating subtitled video.")
+        create_subtitled_video(input_video, subtitle_file, final_output_video)
+    else:
+        print("Subtitles file does not exist. Creating video without subtitles.")
+        create_subtitled_video(input_video, None, final_output_video)
 
-    os.remove("subtitles.srt")
-    os.remove("output_video.mp4")
+    if os.path.exists(final_output_video):
+        print("Final output video created successfully.")
+    else:
+        print("Final output video was not created.")
+
+    os.remove(subtitle_file) if os.path.exists(subtitle_file) else None
+    os.remove(output_video) if os.path.exists(output_video) else None
+
 
 def record_microphone(duration, temp_audio_file="temp_audio.wav"):
     with sr.Microphone() as source:
@@ -107,8 +141,15 @@ def run_with_recording(duration):
         if os.path.exists(temp_audio_file):
             os.remove(temp_audio_file)
 
+@app.route("/generate_video", methods=["POST"])
+def upload_and_generate():
+    if 'file' not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+    file = request.files['file']
+    file.save("temp_audio.wav")
+    main_process("temp_audio.wav")
+    return send_file("final_output_video.mp4", as_attachment=True)
 
-def run():
-    run_with_recording(15)
 
-run()
+if __name__ == "__main__":
+    app.run(debug=True)
