@@ -1,5 +1,9 @@
 # Audio -> Video Generator
 
-This program takes an inputted audio file, and plays it over a video of the audios waveform with generated subtitles/ This application would mainly serve for content creation, for example those clips they show on the news of police calls with the waveform and some random background image. Additionally the application will take in an optional background.png image to put behind the waveform. 
+This application can be run and used locally by installing the necessary dependencies and running the program without the flask server. It is also deployed as an API on my home server for private use. A web frontend will be coming soon, but contact me if you would like access to the API for your own project.
 
-In order to use this program, you will need ffmpeg and IMageMagick installed on your machine, in addition to all the pip requirements. You will also need a free assemblyai api key from their website assemblyai.com, add a config.py file to your src/ directory and add the line API_KEY="YOUR_KEY"
+If running locally you will need an AssemblyAI API key saved as API_KEY="<KEY>" within a config.py file inside of the src/ directory
+
+System dependencies: ImageMagick and ffmpeg
+
+Works on MacOS and Linux, however on native Windows it doesn't work properly so use WSL or a venv. 
